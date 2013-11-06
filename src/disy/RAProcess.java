@@ -6,18 +6,19 @@ import java.util.concurrent.TimeUnit;
 public class RAProcess extends Process {
 
 	private int logicalTime;
+	private int wantedTime;
 	private CountDownLatch latch;
-	private RessourceStatus status;
+	private volatile RessourceStatus status;
 
 	protected RAProcess(int id) {
 		super(id);
 		logicalTime = 0;
+		wantedTime = 0;
 		status = RessourceStatus.RELEASED;
 	}
 
 	public void process(RATrigger raTrigger) {
 		aquireLock();
-		holdLock();
 		process();
 		releaseLock();
 	}
@@ -25,14 +26,24 @@ public class RAProcess extends Process {
 	{
 		System.out.printf("%s trying to aquire lock...\n", this);
 		
-		incLogicalTime(logicalTime);
+		wantLock();
+		waitForResponse();
+		holdLock();
+	}
+	
+	private void wantLock()
+	{
 		status = RessourceStatus.WANTED;
-		
-		RARequest req = new RARequest(this, logicalTime);
+		wantedTime = logicalTime;
+	}
+	
+	private void waitForResponse()
+	{
+		RARequest req = new RARequest(this, wantedTime);
+		incLogicalTime(logicalTime);
 		latch = new CountDownLatch(destinations.size());
 		multicast(req);
 		waitLatch();
-		
 	}
 	
 	private void holdLock()
@@ -78,9 +89,9 @@ public class RAProcess extends Process {
 		incLogicalTime(raRequest.getLogicalTime());
 		//TODO zeiten vergleich stimmt noch nicht?
 		if(status == RessourceStatus.HELD ||
-		  (status == RessourceStatus.WANTED && logicalTime < raRequest.getLogicalTime()))
+		  (status == RessourceStatus.WANTED && wantedTime < raRequest.getLogicalTime()))
 			queueRequest(raRequest);
-		else
+		else	
 			sendResponse(raRequest.getSender());
 	}
 	
