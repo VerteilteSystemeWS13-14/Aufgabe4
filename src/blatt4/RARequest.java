@@ -1,12 +1,12 @@
-package disy;
+package blatt4;
 import disy.Message;
 import disy.Process;
 
 
-public class RAResponse extends Message {
+public class RARequest extends Message {
 	private final int logicalTime;	
 	
-	RAResponse(Process sender, int logicalTime) {
+	RARequest(Process sender, int logicalTime) {
 		super(sender);
 		this.logicalTime = logicalTime;
 	}

@@ -1,7 +1,8 @@
-package disy;
+package blatt4;
 
 import java.util.concurrent.TimeUnit;
 
+import disy.DistributedSystem;
 import disy.Process;
 
 public class RADistributedSystem extends DistributedSystem {

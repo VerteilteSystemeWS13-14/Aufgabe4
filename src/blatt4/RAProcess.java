@@ -1,7 +1,9 @@
-package disy;
+package blatt4;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+
+import disy.Process;
 
 public class RAProcess extends Process {
 

@@ -1,4 +1,4 @@
-package disy;
+package blatt4;
 import disy.Message;
 import disy.Process;
 
