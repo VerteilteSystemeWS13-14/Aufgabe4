@@ -11,6 +11,8 @@ public class RAProcess extends Process {
 	private volatile int wantedTime;
 	private volatile RessourceStatus status;
 	
+	private Object lock = new Object();
+	
 	private CountDownLatch latch;
 
 	protected RAProcess(int id) {
@@ -25,7 +27,7 @@ public class RAProcess extends Process {
 		incLogicalTime(logicalTime);
 		
 		// Prevent that there can be more triggers/requests at the same time
-		synchronized (status) {
+		synchronized (lock) {
 			if (status != RessourceStatus.RELEASED)
 				return;
 			
@@ -39,15 +41,16 @@ public class RAProcess extends Process {
 		waitForResponse();
 		
 		// All processes sent response
-		synchronized (status) {
+		synchronized (lock) {
 			status = RessourceStatus.HELD; //!!
 		}
 		System.out.printf("%s holds lock.\n", this);
 		
 		process(); // Do some work (sleep)
 		
-		synchronized (status) {
+		synchronized (lock) {
 			status = RessourceStatus.RELEASED; //!!
+			lock.notifyAll();
 		}
 		System.out.printf("%s released lock.\n", this);
 	}
@@ -88,19 +91,15 @@ public class RAProcess extends Process {
 		
 		incLogicalTime(raRequest.getLogicalTime());
 		
-		synchronized (status) {
+		synchronized (lock) {
 			if(status == RessourceStatus.HELD ||
 					(status == RessourceStatus.WANTED && wantedTime < raRequest.getLogicalTime())) {
 				
 				// The request has to wait
-				//queueRequest(raRequest);
-				
-				
-				// ?????????
-				
 				System.out.println("WAIIITTTTT");
 				try {
-					status.wait();
+					while (status != RessourceStatus.RELEASED)
+						lock.wait();
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
