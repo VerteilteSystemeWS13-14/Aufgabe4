@@ -7,10 +7,11 @@ import disy.Process;
 
 public class RAProcess extends Process {
 
-	private int logicalTime;
-	private int wantedTime;
-	private CountDownLatch latch;
+	private volatile Integer logicalTime;
+	private volatile int wantedTime;
 	private volatile RessourceStatus status;
+	
+	private CountDownLatch latch;
 
 	protected RAProcess(int id) {
 		super(id);
@@ -19,43 +20,46 @@ public class RAProcess extends Process {
 		status = RessourceStatus.RELEASED;
 	}
 
-	// TRIGGER
+	// TRIGGER (There can only be one request per process)
 	public void process(RATrigger raTrigger) {
 		incLogicalTime(logicalTime);
 		
-		aquireLock();
-		process();
-		releaseLock();
-	}
-	
-	
-	private void aquireLock()
-	{
-		System.out.printf("%s trying to aquire lock...\n", this);
+		// Prevent that there can be more triggers/requests at the same time
+		synchronized (status) {
+			if (status != RessourceStatus.RELEASED)
+				return;
+			
+			System.out.printf("%s trying to aquire lock...\n", this);
+			status = RessourceStatus.WANTED;
+		}
 		
-		wantLock();
+		wantedTime = logicalTime; //!! Hier falsche Zeit bei 2 Threads die Trigger Msgs bearbeiten?
+		
+		// Blocks
 		waitForResponse();
-		holdLock();
+		
+		// All processes sent response
+		synchronized (status) {
+			status = RessourceStatus.HELD; //!!
+		}
+		System.out.printf("%s holds lock.\n", this);
+		
+		process(); // Do some work (sleep)
+		
+		synchronized (status) {
+			status = RessourceStatus.RELEASED; //!!
+		}
+		System.out.printf("%s released lock.\n", this);
 	}
 	
-	private void wantLock()
-	{
-		status = RessourceStatus.WANTED;
-		wantedTime = logicalTime;
-		// Hier falsche Zeit bei 2 Threads die Trigger Msgs bearbeiten?
-	}
-	
-	private void waitForResponse()
-	{
+	private void waitForResponse() {
 		RARequest req = new RARequest(this, wantedTime);
-		// Problem bei mehreren Threads -> unnoetige Msgs?
 		latch = new CountDownLatch(destinations.size());
 		multicast(req);
 		waitLatch();
 	}
 	
-	private void waitLatch()
-	{
+	private void waitLatch() {
 		try
 		{
 			latch.await();
@@ -66,14 +70,7 @@ public class RAProcess extends Process {
 		}
 	}
 	
-	private void holdLock()
-	{
-		status = RessourceStatus.HELD;
-		System.out.printf("%s holds lock.\n", this);
-	}
-	
-	private void process()
-	{
+	private void process() {
 		System.out.printf("%s processing ...\n", this);
 		try
 		{
@@ -83,35 +80,41 @@ public class RAProcess extends Process {
 		{
 			System.out.printf("%s %s\n",this, e.getMessage());
 		}
-	}	
-	
-	private void releaseLock()
-	{
-		status = RessourceStatus.RELEASED;
-		System.out.printf("%s released lock.\n", this);
 	}
-
+	
 	// REQUEST
 	public void process(RARequest raRequest) {
 		//System.out.printf("%s processing request from %s...\n", this, raRequest.getSender());
 		
 		incLogicalTime(raRequest.getLogicalTime());
-		if(status == RessourceStatus.HELD ||
-		  (status == RessourceStatus.WANTED && wantedTime < raRequest.getLogicalTime()))
-			queueRequest(raRequest);
-		else	
+		
+		synchronized (status) {
+			if(status == RessourceStatus.HELD ||
+					(status == RessourceStatus.WANTED && wantedTime < raRequest.getLogicalTime())) {
+				
+				// The request has to wait
+				//queueRequest(raRequest);
+				
+				
+				// ?????????
+				
+				System.out.println("WAIIITTTTT");
+				try {
+					status.wait();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
 			sendResponse(raRequest.getSender());
-	}
-	
-	private void queueRequest(RARequest raRequest)
-	{
-		//System.out.printf("%s queued request.", this);
-		msgQueue.add(raRequest);
+		}
 	}
 	
 	private void sendResponse(Process destination)
 	{
-		RAResponse response = new RAResponse(this, logicalTime);
+		RAResponse response;
+		synchronized (logicalTime) {
+			response = new RAResponse(this, logicalTime);
+		}
 		destination.receiveMessage(response);
 	}
 
@@ -125,9 +128,11 @@ public class RAProcess extends Process {
 	
 	private void incLogicalTime(int p_logicalTime)
 	{
-		if(logicalTime < p_logicalTime)
-			logicalTime = p_logicalTime;
+		synchronized (logicalTime) {
+			if(logicalTime < p_logicalTime)
+				logicalTime = p_logicalTime;
 		
-		logicalTime++;
+			logicalTime++;
+		}
 	}
 }
